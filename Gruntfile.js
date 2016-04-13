@@ -11,7 +11,6 @@ module.exports = function(grunt) {
                 dest: 'dist/excel-builder.dist.js',
                 options: {
                     transform: ['browserify-shim'],
-                    require: ['q'],
                     external: ['lodash', 'jszip']
                 }
             },
@@ -19,7 +18,7 @@ module.exports = function(grunt) {
                 src: ['src/**/*.js'],
                 dest: 'dist/excel-builder.compiled.js',
                 options: {
-                    require: ['lodash', 'jszip', 'q']
+                    require: ['lodash', 'jszip']
                 }
             }
         },

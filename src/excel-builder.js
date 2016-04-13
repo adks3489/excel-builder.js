@@ -2,7 +2,7 @@
 var _ = require('lodash');
 var Workbook = require('./Excel/Workbook');
 var JSZip = require('jszip');
-//var WorkbookWorker = require('./Worker');
+var work = require('webworkify');
 
 /**
  * @name Excel
@@ -35,20 +35,16 @@ var Factory = {
      * @param {String} options.requireJsPath (Optional) The path to requirejs. Will use the id 'requirejs' to look up the script if not specified.
      */
     createFileAsync: function (workbook, options) {
-
-
         workbook.generateFilesAsync({
             success: function (files) {
-
-                var worker = new Worker(require.toUrl('./Excel/ZipWorker.js'));
-                worker.addEventListener('message', function(event) {
+                var w = work(require('./Excel/ZipWorker.js'));
+                w.addEventListener('message', function (event) {
                     if(event.data.status === 'done') {
                         options.success(event.data.data);
                     }
                 });
-                worker.postMessage({
+                w.postMessage({
                     files: files,
-                    ziplib: require.toUrl('JSZip'),
                     base64: (!options || options.base64 !== false)
                 });
             },
@@ -66,19 +62,18 @@ var Factory = {
      */
     createFile: function (workbook, options) {
         var zip = new JSZip();
-        return workbook.generateFiles().then(function (files) {
-            _.each(files, function (content, path) {
-                path = path.substr(1);
-                if(path.indexOf('.xml') !== -1 || path.indexOf('.rel') !== -1) {
-                    zip.file(path, content, {base64: false});
-                } else {
-                    zip.file(path, content, {base64: true, binary: true});
-                }
-            });
-            return zip.generate(_.defaults(options || {}, {
-                type: "base64"
-            }));
+        var files = workbook.generateFiles();
+        _.each(files, function (content, path) {
+            path = path.substr(1);
+            if(path.indexOf('.xml') !== -1 || path.indexOf('.rel') !== -1) {
+                zip.file(path, content, {base64: false});
+            } else {
+                zip.file(path, content, {base64: true, binary: true});
+            }
         });
+        return zip.generate(_.defaults(options || {}, {
+            type: "base64"
+        }));
     }
 };
 

@@ -1,5 +1,4 @@
 "use strict";
-var Q = require('q');
 var _ = require('lodash');
 var util = require('./util');
 var StyleSheet = require('./StyleSheet');
@@ -8,6 +7,7 @@ var SharedStrings = require('./SharedStrings');
 var RelationshipManager = require('./RelationshipManager');
 var Paths = require('./Paths');
 var XMLDOM = require('./XMLDOM');
+var work = require('webworkify');
 
 /**
  * @module Excel/Workbook
@@ -244,7 +244,127 @@ _.extend(Workbook.prototype, {
             }
         });
     },
+    generateFilesAsync: function (options) {
+        var self = this;
+        var files = {},
+            doneCount = this.worksheets.length,
+            stringsCollectedCount = this.worksheets.length,
+            workingIndex = 0,
+            workers = [];
 
+        var result = {
+            status: "Not Started",
+            terminate: function () {
+                for(var i = 0; i < workers.length; i++) {
+                    workers[i].terminate();
+                }
+            }
+        };
+        this._generateCorePaths(files);
+
+        var done = function (workerIndex) {
+            if(--doneCount === 0) {
+                self._prepareFilesForPackaging(files);
+                for(var i = 0; i < workers.length; i++) {
+                    workers[i].terminate();
+                }
+                options.success(files);
+            }
+            else{
+                //Post next export
+                if( self.worksheets.length > 8 && workingIndex < self.worksheets.length ){
+                  var i = workingIndex;
+                  ++workingIndex;
+                  workers[workerIndex].postMessage({
+                      instruction: 'export',
+                      sharedStrings: self.sharedStrings.exportData(),
+                      worksheetIndex: i,
+                      data: self.worksheets[i].exportData()
+                  });
+                }
+            }
+        };
+        var stringsCollected = function (workerIndex) {
+            if(--stringsCollectedCount === 0) {
+                //Start post export
+                workingIndex = workers.length;
+                for(var i = 0; i < workers.length; i++) {
+                    workers[i].postMessage({
+                        instruction: 'export',
+                        sharedStrings: self.sharedStrings.exportData(),
+                        worksheetIndex: i,
+                        data: self.worksheets[i].exportData()
+                    });
+                }
+            }
+            else{
+                //Post next start
+                if( self.worksheets.length > 8 && workingIndex < self.worksheets.length ){
+                  var i = workingIndex;
+                  ++workingIndex;
+                  workers[workerIndex].postMessage({
+                      instruction: 'start',
+                      data: self.worksheets[i].exportData()
+                  });
+                }
+            }
+        };
+
+        var worksheetWorker = {
+            error: function () {
+                for(var i = 0; i < workers.length; i++) {
+                    workers[i].terminate();
+                }
+                //message, filename, lineno
+                options.error.apply(this, arguments);
+            },
+            stringsCollected: function (workerIndex) {
+                stringsCollected(workerIndex);
+            },
+            finished: function (workerIndex, worksheetIndex, data) {
+                files['/xl/worksheets/sheet' + (worksheetIndex + 1) + '.xml'] = {xml: data};
+                Paths[self.worksheets[worksheetIndex].id] = 'worksheets/sheet' + (worksheetIndex + 1) + '.xml';
+                files['/xl/worksheets/_rels/sheet' + (worksheetIndex + 1) + '.xml.rels'] = self.worksheets[worksheetIndex].relations.toXML();
+                done(workerIndex);
+            }
+        };
+
+        var workerCount = Math.min( this.worksheets.length, 8);
+        for(var i = 0; i < workerCount; i++) {
+            workers.push(
+                this._createWorker(i, worksheetWorker )
+            );
+        }
+        for(var i = 0; i < workers.length; ++i) {
+            ++workingIndex;
+            workers[i].postMessage({
+                instruction: 'start',
+                data: self.worksheets[i].exportData()
+            });
+        }
+
+        return result;
+    },
+    _createWorker: function (index, callbacks){
+      var self = this;
+      var w = work(require('./WorksheetExportWorker.js'));
+      w.index = index;
+      w.addEventListener('error', callbacks.error);
+      w.addEventListener('message', function (event) {
+          switch(event.data.status) {
+              case "sharedStrings":
+                  for(var i = 0; i < event.data.data.length; i++) {
+                      self.sharedStrings.addString(event.data.data[i]);
+                  }
+                  callbacks.stringsCollected(this.index);
+                  break;
+              case "finished":
+                  callbacks.finished(this.index, event.data.worksheetIndex, event.data.data);
+                  break;
+          }
+      }, false);
+      return w;
+    },
     generateFiles: function () {
         var files = {};
         this._generateCorePaths(files);
@@ -257,7 +377,7 @@ _.extend(Workbook.prototype, {
 
         this._prepareFilesForPackaging(files);
 
-        return Q.resolve(files);
+        return files;
     }
 });
 module.exports = Workbook;
