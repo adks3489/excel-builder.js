@@ -329,7 +329,7 @@ _.extend(Workbook.prototype, {
             }
         };
 
-        var workerCount = Math.min( this.worksheets.length, 2);
+        var workerCount = Math.min( this.worksheets.length, 1);
         for(var i = 0; i < workerCount; i++) {
             workers.push(
                 this._createWorker(i, worksheetWorker )
