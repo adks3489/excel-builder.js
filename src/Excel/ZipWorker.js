@@ -6,8 +6,8 @@ module.exports = function (self) {
     self.addEventListener('message',function (event){
         "use strict";
         if (!event.data) { return; }
-        ZipJS.useWebWorkers = false;
         var files = event.data.files;
+        ZipJS.useWebWorkers = false;
         ZipJS.createWriter(new ZipJS.Data64URIWriter("vnd.openxmlformats-officedocument.spreadsheetml.sheet"), function(writer) {
             var addFile = function(callback){
                 var path = this;

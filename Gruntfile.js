@@ -11,14 +11,14 @@ module.exports = function(grunt) {
                 dest: 'dist/excel-builder.dist.js',
                 options: {
                     transform: ['browserify-shim'],
-                    external: ['lodash', 'jszip']
+                    external: ['lodash']
                 }
             },
             compiled: {
                 src: ['src/**/*.js'],
                 dest: 'dist/excel-builder.compiled.js',
                 options: {
-                    require: ['lodash', 'jszip']
+                    require: ['lodash']
                 }
             }
         },
@@ -60,8 +60,8 @@ module.exports = function(grunt) {
             }
         },
     });
-    
-    
+
+
     grunt.loadNpmTasks('grunt-contrib-copy');
     grunt.loadNpmTasks('grunt-contrib-jshint');
     grunt.loadNpmTasks('grunt-contrib-uglify');

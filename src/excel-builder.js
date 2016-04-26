@@ -1,8 +1,9 @@
 "use strict";
 var _ = require('lodash');
 var Workbook = require('./Excel/Workbook');
-var JSZip = require('jszip');
 var work = require('webworkify');
+var ZipJS = require('./ZipJS/zip.js').zip;
+var waterfall = require("async/waterfall");
 
 /**
  * @name Excel
@@ -10,7 +11,6 @@ var work = require('webworkify');
  * @author Stephen Liberty
  * @requires underscore
  * @requires Excel/Workbook
- * @requires JSZIP
  * @exports excel-builder
  */
 var Factory = {
@@ -32,7 +32,6 @@ var Factory = {
      * @param {Boolean} options.base64 Whether to 'return' the generated file as a base64 string
      * @param {Function} options.success The callback function to run after workbook creation is successful.
      * @param {Function} options.error The callback function to run if there is an error creating the workbook.
-     * @param {String} options.requireJsPath (Optional) The path to requirejs. Will use the id 'requirejs' to look up the script if not specified.
      */
     createFileAsync: function (workbook, options) {
         workbook.generateFilesAsync({
@@ -43,10 +42,41 @@ var Factory = {
                         options.success(event.data.data);
                     }
                 });
-                w.postMessage({
-                    files: files,
-                    base64: (!options || options.base64 !== false)
-                });
+
+                ZipJS.useWebWorkers = false;
+                ZipJS.createWriter(new ZipJS.Data64URIWriter("vnd.openxmlformats-officedocument.spreadsheetml.sheet"), function(writer) {
+                    var addFile = function(callback){
+                        setTimeout(function(){
+                            var path = this;
+                            var content = files[path];
+                            path = path.substr(1);
+                            if(path.indexOf('.xml') !== -1 || path.indexOf('.rel') !== -1) {
+                                writer.add(path, new ZipJS.TextReader(content), function(){
+                                    callback();
+                                }, undefined, {level: 0, version: 0x0a});
+                            } else {
+                                writer.add(path, new ZipJS.Data64URIReader(content), function(){
+                                    callback();
+                                }, undefined, {level: 0, version: 0x0a});
+                            }
+                        }.bind(this), 15);
+                    };
+                    var tasks = [];
+                    for(var path in files) {
+                        if(files.hasOwnProperty(path)) {
+                            tasks.push(addFile.bind(path));
+                        }
+                    }
+                    tasks.push(function(callback){
+                        writer.close(function(base64data){
+                            options.success(base64data.substring(66));
+                            callback();
+                        });
+                    });
+                    waterfall(tasks, function(){
+
+                    });
+                }, undefined, true);
             },
             error: function () {
                 options.error();
@@ -57,25 +87,41 @@ var Factory = {
     /**
      * Turns a workbook into a downloadable file.
      * @param {Excel/Workbook} workbook The workbook that is being converted
-     * @param {Object} options - options to modify how the zip is created. See http://stuk.github.io/jszip/#doc_generate_options
-     * @returns {Promise}
+     * @param {Object} options -
      */
     createFile: function (workbook, options) {
-        var zip = new JSZip();
         var files = workbook.generateFiles();
-        _.each(files, function (content, path) {
-            path = path.substr(1);
-            if(path.indexOf('.xml') !== -1 || path.indexOf('.rel') !== -1) {
-                zip.file(path, content, {base64: false});
-            } else {
-                zip.file(path, content, {base64: true, binary: true});
+        ZipJS.useWebWorkers = false;
+        ZipJS.createWriter(new ZipJS.Data64URIWriter("vnd.openxmlformats-officedocument.spreadsheetml.sheet"), function(writer) {
+            var addFile = function(callback){
+                setTimeout(function(){
+                    var path = this;
+                    var content = files[path];
+                    path = path.substr(1);
+                    if(path.indexOf('.xml') !== -1 || path.indexOf('.rel') !== -1) {
+                        writer.add(path, new ZipJS.TextReader(content), function(){
+                            callback();
+                        }, undefined, {level: 0, version: 0x0a});
+                    } else {
+                        writer.add(path, new ZipJS.Data64URIReader(content), function(){
+                            callback();
+                        }, undefined, {level: 0, version: 0x0a});
+                    }
+                }.bind(this), 15);
+            };
+            var tasks = [];
+            for(var path in files) {
+                if(files.hasOwnProperty(path)) {
+                    tasks.push(addFile.bind(path));
+                }
             }
-        });
-        return zip.generate(_.defaults(options || {}, {
-            type: "base64"
-        }));
+            waterfall(tasks, function(){
+                writer.close(function(base64data){
+                    options.success(base64data.substring(66));
+                });
+            } );
+        }, undefined, true);
     }
 };
-
 
 module.exports = Factory;
