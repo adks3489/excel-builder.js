@@ -261,6 +261,7 @@ _.extend(Workbook.prototype, {
             }
         };
         this._generateCorePaths(files);
+        var workerCount = Math.min( this.worksheets.length, 1);
 
         var done = function (workerIndex) {
             if(--doneCount === 0) {
@@ -272,7 +273,7 @@ _.extend(Workbook.prototype, {
             }
             else{
                 //Post next export
-                if( self.worksheets.length > 8 && workingIndex < self.worksheets.length ){
+                if( self.worksheets.length > workerCount && workingIndex < self.worksheets.length ){
                   var i = workingIndex;
                   ++workingIndex;
                   workers[workerIndex].postMessage({
@@ -299,7 +300,7 @@ _.extend(Workbook.prototype, {
             }
             else{
                 //Post next start
-                if( self.worksheets.length > 8 && workingIndex < self.worksheets.length ){
+                if( self.worksheets.length > workerCount && workingIndex < self.worksheets.length ){
                   var i = workingIndex;
                   ++workingIndex;
                   workers[workerIndex].postMessage({
@@ -329,7 +330,6 @@ _.extend(Workbook.prototype, {
             }
         };
 
-        var workerCount = Math.min( this.worksheets.length, 1);
         for(var i = 0; i < workerCount; i++) {
             workers.push(
                 this._createWorker(i, worksheetWorker )
